@@ -4,21 +4,22 @@ using System.IO;
 using Nest;
 using CsvHelper;
 using CsvHelper.Configuration;
+using CsvHelper.Configuration.Attributes;
 using System.Globalization;
 
 namespace ElasticsearchExample2
 {
-    // BusinessOperation sınıfı, CSV dosyasındaki verilerin yapısını temsil eder
-    public class BusinessOperation
+    // Build sınıfı, CSV dosyasındaki verilerin yapısını temsil eder
+    public class Build
     {
+        [Name("Build")]
+        public string BuildName { get; set; }
+
+        [Name("Ascendancy")]
+        public string Ascendancy { get; set; }
+
+        [Name("Açıklama")]
         public string Description { get; set; }
-        public string Industry { get; set; }
-        public string Level { get; set; }
-        public string Size { get; set; }
-        public string Line_Code { get; set; }
-        public int? Value { get; set; }
-        public string Unit { get; set; }
-        public string Footnotes { get; set; }
     }
 
     class Program
@@ -27,78 +28,56 @@ namespace ElasticsearchExample2
         {
             // Elasticsearch bağlantı ayarlarını yapılandır
             var settings = new ConnectionSettings(new Uri("http://localhost:9200"))
-                .DefaultIndex("business_operations"); // Varsayılan indeks adı
+                .DefaultIndex("builds"); // Varsayılan indeks adı
 
             var client = new ElasticClient(settings);
 
-            // Veriyi Elasticsearch'e yükle
-            if (!client.Indices.Exists("business_operations").Exists) // İndeks var mı kontrol et
+            // İndeks var mı kontrol et
+            if (!client.Indices.Exists("builds").Exists)
             {
-                // İndeks oluştur ve BusinessOperation sınıfını haritalandır
-                client.Indices.Create("business_operations", c => c
-                    .Map<BusinessOperation>(m => m
+                // İndeks oluştur ve Build sınıfını haritalandır
+                client.Indices.Create("builds", c => c
+                    .Map<Build>(m => m
                         .AutoMap()
                     )
                 );
-
-                // CSV dosyasını oku
-                using (var reader = new StreamReader("business-operations-survey-2023-climate-change 1.csv"))
-                using (var csv = new CsvReader(reader, new CsvConfiguration(CultureInfo.InvariantCulture)))
-                {
-                    // CSV verilerini BusinessOperation nesnelerine dönüştür
-                    var records = csv.GetRecords<BusinessOperation>();
-                    // Verileri Elasticsearch'e yükle
-                    client.IndexMany(records);
-                }
             }
-            //CSV Dosyasının Doğru Yolu ve Verilerin Yüklendiğini Kontrol Etme:
-            if (!client.Indices.Exists("business_operations").Exists)
+
+            // CSV dosyasını oku
+            using (var reader = new StreamReader("buildler2.csv"))
+            using (var csv = new CsvReader(reader, new CsvConfiguration(CultureInfo.InvariantCulture)
             {
-                client.Indices.Create("business_operations", c => c
-                    .Map<BusinessOperation>(m => m.AutoMap()));
+                HeaderValidated = null, // Başlık doğrulamasını devre dışı bırak
+                MissingFieldFound = null, // Eksik alan bulunursa hata vermemek için
+            }))
+            {
+                // CSV verilerini Build nesnelerine dönüştür
+                var records = csv.GetRecords<Build>();
+                // Verileri Elasticsearch'e yükle
+                var indexResponse = client.IndexMany(records);
 
-                using (var reader = new StreamReader("business-operations-survey-2023-climate-change 1.csv"))
-                using (var csv = new CsvReader(reader, new CsvConfiguration(CultureInfo.InvariantCulture)))
+                if (!indexResponse.IsValid)
                 {
-                    var records = csv.GetRecords<BusinessOperation>();
-                    var indexResponse = client.IndexMany(records);
-                    if (!indexResponse.IsValid)
-                    {
-                        Console.WriteLine("Veriler Elasticsearch'e yüklenirken hata oluştu.");
-                        return;
-                    }
+                    Console.WriteLine("Veriler Elasticsearch'e yüklenirken hata oluştu.");
+                    Console.WriteLine(indexResponse.DebugInformation);
+                    return;
                 }
             }
-            /**
+
             // Basit bir arama yap
-            var searchResponse = client.Search<BusinessOperation>(s => s
+            var searchResponse = client.Search<Build>(s => s
                 .Query(q => q
-                    .MultiMatch(m => m
-                        .Fields(f => f
-                            .Field(p => p.Description)
-                            .Field(p => p.Industry)
-                            
-                        )
-                        .Query("Agriculture") // Aranacak kelimeyi buraya yazın
+                    .QueryString(qs => qs
+                        .Query("reap") // Aranacak kelimeyi buraya yazın
                     )
                 )
-            );**/
-             //tüm alanalarda arama;
-               var searchResponse = client.Search<BusinessOperation>(s => s
-                        .Query(q => q
-                            .QueryString(qs => qs
-                                .Query("Agriculture")
-                            )
-                        )
-                    );
-            
-             
-             
-             
-            //Arama Sorgusunun Doğru Olduğunu Kontrol Etme:
+            );
+
+            // Arama Sorgusunun Doğru Olduğunu Kontrol Etme
             if (!searchResponse.IsValid)
             {
                 Console.WriteLine("Arama sorgusu başarısız oldu.");
+                Console.WriteLine(searchResponse.DebugInformation);
                 return;
             }
 
@@ -106,20 +85,17 @@ namespace ElasticsearchExample2
             {
                 Console.WriteLine("Arama sorgusuyla eşleşen sonuç bulunamadı.");
             }
+            else
+            {
+                foreach (var hit in searchResponse.Hits)
+                {
+                    Console.WriteLine($"{hit.Source.BuildName} - {hit.Source.Ascendancy} - {hit.Source.Description}");
+                }
+            }
 
-            foreach (var hit in searchResponse.Hits)
-            {
-                Console.WriteLine($"{hit.Source.Description} - {hit.Source.Industry} - {hit.Source.Value}");
-            }
-            // Arama sonuçlarını yazdır
-            foreach (var hit in searchResponse.Hits)
-            {
-                Console.WriteLine($"{hit.Source.Description} - {hit.Source.Industry} - {hit.Source.Value}");
-            }
-            
-            //anında cmd den çıkmasın diye
+            // Anında cmd den çıkmasın diye
             Console.WriteLine("Bir tuşa basın çıkmak için...");
-            Console.ReadLine();
+            Console.ReadLine(); // Programın kapanmasını engellemek için eklenen satır
         }
     }
 }
