@@ -6,7 +6,7 @@ using CsvHelper;
 using CsvHelper.Configuration;
 using System.Globalization;
 
-namespace ElasticsearchExample
+namespace ElasticsearchExample2
 {
     public class BusinessOperation
     {
@@ -51,7 +51,7 @@ namespace ElasticsearchExample
                 .Query(q => q
                     .Match(m => m
                         .Field(f => f.Description)
-                        .Query("total number of businesses")
+                        .Query("bussiness")
                     )
                 )
             );
@@ -64,19 +64,3 @@ namespace ElasticsearchExample
         }
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
